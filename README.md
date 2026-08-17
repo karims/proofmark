@@ -1,21 +1,36 @@
 # proofmark
 
-**Structured LLM output that has been tested, not just typed.**
+**proofmark validates and repairs structured LLM output beyond JSON Schema.**
 
-A proof mark is the stamp something gets once it's been tested. Same idea here:
-not just JSON of the right shape, but JSON that's been checked.
-
-Getting a model to emit JSON that matches a schema is the easy half, and several
-libraries do it well. proofmark covers the rest: whether the document is actually
-*correct*, what to do when it isn't, and how to find out why.
+Define semantic checks for things like totals, bounds, duplicates, and
+placeholders, then deterministically fix what can be fixed before spending another
+LLM call.
 
 ```bash
 pip install proofmark
 ```
 
-Zero required dependencies. Providers speak HTTP over the standard library and
-schema validation is implemented in-tree, so adding proofmark to a project does not
-drag in a dependency tree.
+The pipeline:
+
+```text
+LLM output
+    ↓
+normalize what can be deterministically derived
+    ↓
+structural/schema validation
+    ↓
+application-level semantic checks
+    ↓
+LLM repair only if necessary
+```
+
+The differentiator is the ordering: **repair with deterministic code before
+asking the model again.** A second model call costs latency and money, and it
+re-rolls the dice on output the previous call already got wrong. Fixing in code
+what code can fix removes those retries entirely.
+
+Zero required dependencies, incidentally: providers speak HTTP over the standard
+library and schema validation is implemented in-tree.
 
 ---
 
@@ -37,14 +52,35 @@ number. The model returns:
 }
 ```
 
-Every field has the right type. The schema validates. **The numbers add up to 950.**
+Every field has the right type. JSON Schema is satisfied. **The line items add up
+to 950.**
 
-No amount of schema conformance catches this, because it is not a typing error —
-it is an arithmetic error. And the standard reflex, asking the model to try again,
-is the wrong move: it costs a round trip, and the model is being asked to redo the
-arithmetic it just got wrong.
+Schema conformance cannot catch this: "line items sum to the stated total" is an
+application invariant, not a typing rule. proofmark lets you state that invariant
+(`checks.sums_to(...)`), detects the violation, and — if you have supplied a
+normalizer that says how to reconcile it — repairs it in code without another
+provider call.
 
-proofmark fixes it in code, in microseconds, and tells you it did.
+proofmark does not decide which number is authoritative. That policy is your
+normalizer configuration: absorbing the shortfall into a contingency line is a
+choice you make, not something the library infers.
+
+### Normalize what is derivable. Check what is evidence.
+
+This is the principle the library is organised around, and it is how you decide
+whether something belongs in `normalizers=` or `checks=`.
+
+- **Derived** values can safely be recomputed. On an invoice, `line_total` is
+  `quantity × unit_price` and nothing else, so code recomputes it and the model is
+  never asked.
+- **Evidence** values should usually be checked, not overwritten. A `subtotal`
+  printed on the source document is evidence; when it disagrees with the extracted
+  rows, that often means a row was *missed*.
+
+Auto-correcting evidence to match the rest of the document erases the only signal
+that extraction went wrong, and hands you a tidy, internally consistent, wrong
+invoice. That is a silent data-loss bug in a lot of extraction pipelines; here it
+is just the difference between `normalizers=` and `checks=`.
 
 ---
 
@@ -71,7 +107,7 @@ result = compose(
         ),
     ],
 
-    # Correctness the schema cannot express.
+    # Application-level rules JSON Schema cannot express.
     checks=[
         checks.sums_to("budget.items", "amount", "budget.total"),
         checks.currency_consistent("EUR"),
@@ -89,12 +125,19 @@ else:
 
 That run costs **one** provider call. The 50-EUR shortfall is absorbed into
 contingency by `rebalance_to_total`, and `result.outcome` is `NORMALIZED` rather
-than `OK`, so you know the model got it wrong even though you got a correct
-document.
+than `OK` — so you know the model got it wrong even though the document you got
+satisfies the constraints you defined.
 
 ---
 
 ## What it does
+
+The built-in checks and normalizers below are a starting set, not the point. The
+abstraction is the pipeline and its extension model: checks are ordinary callables,
+normalizers are deterministic, structural and semantic failures are separated,
+model repair runs only after deterministic repair fails, failure types are
+explicit, traces record what happened, and provider degradation is handled the
+same way across backends.
 
 ### 1. Preflights the schema — before spending a call
 
@@ -129,10 +172,10 @@ mysteriously low-quality result.
 JSON" and "your model silently fell back to prompt-and-pray" look identical
 without it.
 
-### 3. Validates semantically
+### 3. Runs application-level semantic checks
 
-Schema validity is table stakes. The built-ins cover the recurring ways a
-schema-valid document is still wrong:
+Schema validity is table stakes. The built-ins cover recurring ways a schema-valid
+document still violates a domain invariant:
 
 | Check | Catches |
 |---|---|
@@ -198,20 +241,11 @@ python examples/recipe.py    # deep nesting, $refs, arrays, permissive schema
 python examples/invoice.py   # document extraction -- start here
 ```
 
-[`invoice.py`](examples/invoice.py) carries the idea the library is organised
-around:
+[`invoice.py`](examples/invoice.py) is the worked version of *normalize what is
+derivable, check what is evidence*: `line_total` is recomputed by a normalizer,
+`subtotal` is left alone and asserted by a check.
 
-> **Normalize what is derivable. Check what is evidence.**
-
-On an invoice, `line_total` is derivable — it is `quantity × unit_price` and
-nothing else — so code recomputes it and the model is never asked. `subtotal` is
-*evidence*: it is printed on the document, and when it disagrees with the extracted
-rows, that usually means a row was **missed**. Auto-correcting the subtotal to
-match the rows you found erases the only signal that anything is wrong, and hands
-you a tidy, internally consistent, wrong invoice.
-
-That distinction is a silent data-loss bug in a lot of extraction pipelines. Here
-it is just the difference between `normalizers=` and `checks=`.
+(The name: a proof mark is the stamp something gets once it has been tested.)
 
 ## Testing without a network
 
@@ -267,9 +301,11 @@ Not yet implemented: Pydantic model adaptation (pass a JSON Schema for now —
 and a response cache for deterministic replay.
 
 Nearest neighbours: [Instructor](https://github.com/jxnl/instructor) and
-[Outlines](https://github.com/dottxt-ai/outlines) get you schema conformance and
-stop there. proofmark starts where they finish. Use both if you like — proofmark
-does not care how the JSON was produced, only whether it holds up.
+[Outlines](https://github.com/dottxt-ai/outlines). proofmark is focused
+specifically on the layer after structured generation — deterministic
+normalization, application-level invariant checks, repair orchestration, failure
+classification, and tracing — so it complements libraries that already handle
+structured generation. It does not care how the JSON was produced.
 
 ## License
 
