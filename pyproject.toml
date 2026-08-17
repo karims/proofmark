@@ -9,14 +9,28 @@ description = "Structured LLM output that has been tested, not just typed."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-keywords = ["llm", "json-schema", "structured-output", "validation", "openai"]
+# TODO before publishing: replace with your name and the address you want on PyPI.
+authors = [{ name = "karims" }]
+keywords = [
+    "llm",
+    "json-schema",
+    "structured-output",
+    "validation",
+    "openai",
+    "extraction",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup",
+    "Typing :: Typed",
 ]
 
 # No required dependencies. Providers speak HTTP over the standard library, and
@@ -24,8 +38,14 @@ classifiers = [
 # never drag in a dependency tree.
 dependencies = []
 
+# TODO before publishing: confirm the GitHub account these point at.
+[project.urls]
+Homepage = "https://github.com/karims/proofmark"
+Repository = "https://github.com/karims/proofmark"
+Issues = "https://github.com/karims/proofmark/issues"
+
 [project.optional-dependencies]
-dev = ["pytest>=8,<9"]
+dev = ["pytest>=8,<9", "build>=1.0", "twine>=5.0"]
 
 [tool.setuptools]
 packages = ["proofmark", "proofmark.schema", "proofmark.providers"]

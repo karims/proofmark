@@ -2,9 +2,8 @@
 
 **Structured LLM output that has been tested, not just typed.**
 
-A *proof mark* is the stamp struck into a barrel or an ingot after it has passed a
-proof test — evidence the piece was put under load and survived, applied by the
-proof house rather than the maker.
+A proof mark is the stamp something gets once it's been tested. Same idea here:
+not just JSON of the right shape, but JSON that's been checked.
 
 Getting a model to emit JSON that matches a schema is the easy half, and several
 libraries do it well. proofmark covers the rest: whether the document is actually
@@ -188,10 +187,36 @@ differ only where behaviour differed.
 
 ---
 
+## Examples
+
+All three run offline with no API key, and are covered by the test suite so they
+cannot silently rot. See [`examples/`](examples/).
+
+```bash
+python examples/budget.py    # the core pitch, on a flat strict schema
+python examples/recipe.py    # deep nesting, $refs, arrays, permissive schema
+python examples/invoice.py   # document extraction -- start here
+```
+
+[`invoice.py`](examples/invoice.py) carries the idea the library is organised
+around:
+
+> **Normalize what is derivable. Check what is evidence.**
+
+On an invoice, `line_total` is derivable — it is `quantity × unit_price` and
+nothing else — so code recomputes it and the model is never asked. `subtotal` is
+*evidence*: it is printed on the document, and when it disagrees with the extracted
+rows, that usually means a row was **missed**. Auto-correcting the subtotal to
+match the rows you found erases the only signal that anything is wrong, and hands
+you a tidy, internally consistent, wrong invoice.
+
+That distinction is a silent data-loss bug in a lot of extraction pipelines. Here
+it is just the difference between `normalizers=` and `checks=`.
+
 ## Testing without a network
 
 Every behaviour proofmark claims to handle is reproducible offline. The library's
-own suite is 97 tests in 0.05s with no network and no mocking of HTTP.
+own suite is 100 tests in 0.04s with no network and no mocking of HTTP.
 
 ```python
 from proofmark import compose, StaticProvider

@@ -1,11 +1,9 @@
 """proofmark -- structured LLM output that has been tested, not just typed.
 
-A proof mark is the stamp struck into a barrel or an ingot after it has passed a
-proof test: evidence the piece was put under load and survived, applied by the
-proof house rather than the maker.
+A proof mark is the stamp something gets once it's been tested.
 
-That is this library's job. Getting a model to emit JSON matching a schema is the
-easy half and several libraries do it well. proofmark covers the rest:
+Getting a model to emit JSON matching a schema is the easy half, and several
+libraries do it well. proofmark covers the rest:
 
 - **Preflight** the schema against provider constraints, before spending a call.
 - **Degrade** across generation tiers deliberately, and record which one was used.
